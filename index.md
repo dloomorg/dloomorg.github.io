@@ -1,3 +1,8 @@
+---
+layout: default
+title: Home
+---
+
 # dloom
 
 A lightweight, flexible dotfile manager and system bootstrapper for macOS and Linux.
