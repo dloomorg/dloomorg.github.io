@@ -32,6 +32,13 @@ A lightweight, flexible dotfile manager and system bootstrapper for macOS and Li
 
 ## Installation
 
+### Homebrew (macOS and Linux)
+
+```bash
+brew tap dloomorg/dloom https://github.com/dloomorg/dloom
+brew install dloomorg/dloom/dloom
+```
+
 ### Pre-built Binaries
 
 `dloom` is a single cross-platform binary and can be installed on macOS and Linux. You can download the latest release from the [GitHub releases](https://github.com/dloomorg/dloom/releases/) page. Simply download the `dloom` binary, and place it in your `PATH`.
@@ -65,6 +72,12 @@ dloom link vim
 
 # Link multiple packages
 dloom link vim tmux bash
+
+# Link all packages in the current dotfiles directory
+dloom link .
+
+# Link all packages from a specific dotfiles directory
+dloom link ~/projects/dotfiles/
 
 # Link with verbose output
 dloom -v link vim
@@ -128,6 +141,9 @@ To remove the symlinks created by `dloom`, use the `unlink` command:
 ```bash
 # Unlink all dotfiles from your vim package
 dloom unlink vim
+
+# Unlink all packages in the current dotfiles directory
+dloom unlink .
 ```
 
 Unlink will only remove links if they were created by `dloom`, i.e - if the links are pointing to files in the source (usually the dotfiles) directory. Any extra files in the target directory will remain untouched. If `dloom` finds any backups for files that were unlinked, it will restore them. Finally, if the target directory becomes empty after unlinking (and if no backups were found), the directory will be removed. 
@@ -248,11 +264,17 @@ For a more complete example, check the [examples](https://github.com/dloomorg/dl
 # Basic linking
 dloom link <package>...
 
+# Link all packages in the current directory
+dloom link .
+
+# Link all packages from a specific directory
+dloom link ~/dotfiles/
+
 # Link with options
 dloom -v -f link <package>...  # Verbose and force overwrite
 
 # Use -d flag for dry run (preview only)
-dloom -d link link tmux vim
+dloom -d link tmux vim
 ```
 
 ### Unlinking Dotfiles
@@ -260,6 +282,9 @@ dloom -d link link tmux vim
 ```bash
 # Remove symlinks
 dloom unlink <package>...
+
+# Unlink all packages in the current directory
+dloom unlink .
 
 # Unlink with options
 dloom -d unlink <package>...  # Dry run (preview only)
@@ -296,6 +321,7 @@ dloom/
 │   ├── config.go       # Configuration handling
 │   ├── link.go         # Link implementation
 │   ├── unlink.go       # Unlink implementation
+│   ├── resolve.go      # Argument resolution and package enumeration
 │   └── setup.go        # System setup implementation
 └── examples/           # Sample configurations
 ```
