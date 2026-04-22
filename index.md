@@ -15,7 +15,7 @@ A lightweight, flexible dotfile manager and system bootstrapper for macOS and Li
 
 ## Overview
 
-**dloom** (pronounced *dee-loom*) is a CLI (command-line interface) tool that _links_ and _unlinks_ configuration files (or _dotfiles_) in a development machine. It manages symlinks between a dotfiles repository (or any source directory) and the machine's target directory (_home_ directory by default; overridable). The tool is inspired from GNU Stow and other dotfile managers, but differs in its approach by creating symlinks for individual files instead of directories. This enables other applications to add files to the same parent directories without them needing to be tracked in the dotfiles repository.
+**dloom** (pronounced *dee-loom*) is a CLI (command-line interface) tool that _links_, _unlinks_, and _adopts_ configuration files (or _dotfiles_) in a development machine. It manages symlinks between a dotfiles repository (or any source directory) and the machine's target directory (_home_ directory by default; overridable). The tool is inspired from GNU Stow and other dotfile managers, but differs in its approach by creating symlinks for individual files instead of directories. This enables other applications to add files to the same parent directories without them needing to be tracked in the dotfiles repository.
 
 ## Features
 
@@ -24,6 +24,7 @@ A lightweight, flexible dotfile manager and system bootstrapper for macOS and Li
   - This is the main difference from GNU Stow. _It means that the addition of a file to a directory in your dotfiles repository will not automatically create a symlink for it. You will need to run `dloom link` again to create the symlink for the new file._
   - Additionally, links for files can have different names in the target directory. This allows users to have separate dotfiles for different environments (e.g., macOS vs. Linux) without needing to maintain separate branches or repositories, while still having the same name for the symlinked file.
 - **Conditional Linking**: Link files only when specific conditions are met (OS, distro, installed tools, tool versions).
+- **Adopt Existing Files**: Move existing files from the target directory into your dotfiles repository and replace them with symlinks.
 - **Customize Setup (Optional)**: Allows customization of how the system is set up using a configuration file. Override settings at the global, package, or file level, including support for regex patterns.
 - **Backup System**: Automatically backs up existing files before replacing them.
 - **Dry Run Mode**: Preview changes without modifying your system.
@@ -39,14 +40,45 @@ brew tap dloomorg/dloom https://github.com/dloomorg/dloom
 brew install dloomorg/dloom/dloom
 ```
 
+### Arch Linux (AUR)
+
+For Arch Linux users, `dloom` is available in the AUR in two variants. The current AUR packages target `x86_64`:
+
+- `dloom`: builds from source
+- `dloom-bin`: installs the pre-built Linux `x86_64` release binary
+
+If you use an AUR helper such as `yay` or `paru`:
+
+```bash
+# Build from source
+yay -S dloom
+
+# Or install the pre-built binary package
+yay -S dloom-bin
+```
+
+To install manually from the AUR, clone the package you want and build it with `makepkg`:
+
+```bash
+# Build from source
+git clone https://aur.archlinux.org/dloom.git
+cd dloom
+makepkg -si
+
+# Or install the pre-built binary package
+git clone https://aur.archlinux.org/dloom-bin.git
+cd dloom-bin
+makepkg -si
+```
+
 ### Pre-built Binaries
 
-`dloom` is a single cross-platform binary and can be installed on macOS and Linux. You can download the latest release from the [GitHub releases](https://github.com/dloomorg/dloom/releases/) page. Simply download the `dloom` binary, and place it in your `PATH`.
+`dloom` ships as separate binaries for each supported OS and CPU architecture. Download the release asset that matches your platform, extract it, and place the `dloom` binary in your `PATH`.
 
 ### From Source
 
 **Requirements:**
-- Go 1.18 or later
+- Go 1.26.2 or later
 
 ```bash
 # Install from source
@@ -60,7 +92,7 @@ go build -o bin/dloom
 
 ## Quick Start
 
-dloom has two main commands: `link` and `unlink`. The `link` command creates symlinks for your dotfiles, while the `unlink` command removes them.
+dloom has three main commands: `link`, `unlink`, and `adopt`. The `link` command creates symlinks for your dotfiles, `unlink` removes them, and `adopt` moves existing target files into your source package before linking them back.
 
 ### Linking Dotfiles
 
@@ -147,6 +179,39 @@ dloom unlink .
 ```
 
 Unlink will only remove links if they were created by `dloom`, i.e - if the links are pointing to files in the source (usually the dotfiles) directory. Any extra files in the target directory will remain untouched. If `dloom` finds any backups for files that were unlinked, it will restore them. Finally, if the target directory becomes empty after unlinking (and if no backups were found), the directory will be removed. 
+
+### Adopting Existing Files
+
+To move existing files into a package and replace them with symlinks, use `adopt`:
+
+```bash
+# Adopt a single file into the zsh package
+dloom adopt zsh ~/.zshrc
+
+# Adopt a whole directory into the ghostty package
+dloom adopt ghostty ~/.config/ghostty
+
+# Adopt multiple paths into one package
+dloom adopt git ~/.gitconfig ~/.config/git
+
+# Preview the changes first
+dloom -d adopt zsh ~/.zshrc
+
+# Confirm each file before adopting it
+dloom adopt -i hypr ~/.config/hypr
+
+# Preview interactively without changing anything
+dloom -d adopt -i hypr ~/.config/hypr
+```
+
+`adopt` uses the same package-oriented layout as `link`: it determines where files belong inside the package based on the package target directory, copies the files into the package source tree, removes the originals, and then creates symlinks back to the adopted copies. Existing symlinks are skipped. Use `-i` or `--interactive` to confirm each file before it is adopted. You can combine it with `-d` to preview only the files you confirm, without changing anything.
+
+Current limitations:
+
+- `adopt` only supports direct path mapping. Packages with `regex:` file overrides are not supported.
+- `adopt` does not support file overrides that change `target_name` or `target_dir`.
+- `adopt` does not support `--force`; if the destination file already exists in the source package, resolve the conflict manually.
+- Existing symlinks are skipped. Symlinks that already point at the expected source file are treated as already adopted.
 
 ### Backup System
 
@@ -303,14 +368,140 @@ dloom -d unlink <package>...  # Dry run (preview only)
 
 ## Conditional Linking
 
-`dloom` supports conditional linking based on:
+`dloom` supports conditional linking based on conditions specified in the config file. Conditions can be applied at the package level (affect all files in the package) or at the file level (affect individual files or regex-matched groups).
 
-- **Operating System**: Link files only on specific OS.
-- **Linux Distribution**: Link files only on specific distros.
-- **Executable Presence**: Link files only if certain executables exist (for instance use a different waybar config file for hyprland vs sway).
-- **Executable Version**: Link files only if executables meet version requirements.
+**Logic rules:**
+- Multiple condition types are **AND-ed** — all must pass for the file to be linked.
+- Multiple values within a single condition type are **OR-ed** — any one matching is enough.
 
-When multiple conditions are specified, they are AND-ed together. For example, if you want to link a file only if the OS is Linux and the executable `git` is installed, you can specify both conditions in the configuration file. For a given condition, if multiple values are specified, they are OR-ed together. For example, if you want to link a file only if the OS is either Linux or macOS, you can specify both values in the configuration file.
+```yaml
+link_overrides:
+  mypkg:
+    conditions:
+      os: [linux, darwin]   # AND-ed with other condition types below
+      executable: [git]     # both must be true for the package to link
+```
+
+### Condition Reference
+
+#### `os` — Operating System
+
+Links only on the specified operating system(s). Values match Go's `runtime.GOOS`: `linux`, `darwin` (macOS), `windows`.
+
+```yaml
+conditions:
+  os:
+    - linux
+    - darwin   # link on Linux or macOS, skip on Windows
+```
+
+#### `distro` — Linux Distribution
+
+Links only on the specified Linux distribution(s). Detected from `/etc/os-release`. Common values: `ubuntu`, `debian`, `arch`, `fedora`, `nixos`. On non-Linux systems this condition is ignored (always passes).
+
+```yaml
+conditions:
+  distro:
+    - ubuntu
+    - debian
+```
+
+#### `executable` — Installed Program
+
+Links only if all listed executables are found in `$PATH`. Useful for linking tool-specific configs only when that tool is installed.
+
+```yaml
+conditions:
+  executable:
+    - tmux    # link only if tmux is installed
+```
+
+Multiple executables are AND-ed — all must be present:
+
+```yaml
+conditions:
+  executable:
+    - node
+    - npm
+```
+
+#### `executable_version` — Program Version
+
+Links only if the specified executables meet the given version constraints. Supports operators `>=`, `>`, `<=`, `<`, `=`.
+
+```yaml
+conditions:
+  executable_version:
+    tmux: ">=3.0"     # tmux 3.0 or newer
+    node: ">=18.0.0"
+```
+
+Combine with `executable` if the program might not be installed at all:
+
+```yaml
+conditions:
+  executable:
+    - tmux
+  executable_version:
+    tmux: ">=3.0"
+```
+
+#### `user` — System User
+
+Links only when the current user matches. Useful for shared machines or shared dotfiles repos with multiple contributors.
+
+```yaml
+conditions:
+  user:
+    - alice
+    - bob
+```
+
+#### `hostname` — Machine Hostname
+
+Links only when the system hostname matches. Useful for maintaining one dotfiles repo across multiple machines — work laptop, home desktop, servers — and linking only what belongs on each.
+
+```yaml
+conditions:
+  hostname:
+    - work-macbook
+    - work-desktop
+```
+
+**Example: work vs. personal machine separation**
+
+```yaml
+link_overrides:
+  # Work-specific configs — only on work machines
+  work:
+    conditions:
+      hostname:
+        - work-macbook
+        - work-linux
+
+  # Personal configs — only on personal machines
+  personal:
+    conditions:
+      hostname:
+        - home-mac
+        - home-desktop
+
+  # SSH config differs per machine
+  ssh:
+    file_overrides:
+      "config.work":
+        target_name: "config"
+        conditions:
+          hostname:
+            - work-macbook
+      "config.personal":
+        target_name: "config"
+        conditions:
+          hostname:
+            - home-mac
+```
+
+The hostname value is whatever `hostname` returns on your system (or `os.Hostname()` in Go). Run `hostname` in your terminal to confirm the exact value to use.
 
 ## Project Structure
 
